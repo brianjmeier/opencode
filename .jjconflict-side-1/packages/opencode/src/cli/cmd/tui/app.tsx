@@ -11,7 +11,7 @@ import { DialogProvider, useDialog } from "@tui/ui/dialog"
 import { DialogProvider as DialogProviderList } from "@tui/component/dialog-provider"
 import { SDKProvider, useSDK } from "@tui/context/sdk"
 import { SyncProvider, useSync } from "@tui/context/sync"
-import { ReviewProvider } from "@tui/context/review"
+import { ReviewProvider, useReview } from "@tui/context/review"
 import { LocalProvider, useLocal } from "@tui/context/local"
 import { DialogModel, useConnected } from "@tui/component/dialog-model"
 import { DialogMcp } from "@tui/component/dialog-mcp"
@@ -213,6 +213,7 @@ function App() {
   const sync = useSync()
   const exit = useExit()
   const promptRef = usePromptRef()
+  const review = useReview()
 
   useKeyboard((evt) => {
     if (!Flag.OPENCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT) return
@@ -692,7 +693,9 @@ function App() {
   })
 
   sdk.event.on(SessionApi.Event.Deleted.type, (evt) => {
-    if (route.data.type === "session" && route.data.sessionID === evt.properties.info.id) {
+    const sessionID = evt.properties.info.id
+    review.clearSession(sessionID)
+    if (route.data.type === "session" && route.data.sessionID === sessionID) {
       route.navigate({ type: "home" })
       toast.show({
         variant: "info",
