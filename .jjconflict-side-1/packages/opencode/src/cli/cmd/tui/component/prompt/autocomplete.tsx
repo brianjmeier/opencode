@@ -13,7 +13,7 @@ import { useTerminalDimensions } from "@opentui/solid"
 import { Locale } from "@/util/locale"
 import type { PromptInfo } from "./history"
 import { useFrecency } from "./frecency"
-import { shouldClearSlashCommand } from "./autocomplete-util"
+import { shouldClearSlashCommand, calculateScrollDelta } from "./autocomplete-util"
 
 function removeLineRange(input: string) {
   const hashIndex = input.lastIndexOf("#")
@@ -439,13 +439,11 @@ export function Autocomplete(props: {
   function moveTo(next: number) {
     setStore("selected", next)
     if (!scroll) return
-    const viewportHeight = Math.min(height(), options().length)
-    const scrollBottom = scroll.scrollTop + viewportHeight
-    if (next < scroll.scrollTop) {
-      scroll.scrollBy(next - scroll.scrollTop)
-    } else if (next + 1 > scrollBottom) {
-      scroll.scrollBy(next + 1 - scrollBottom)
-    }
+    const target = scroll.getChildren()[next]
+    if (!target) return
+    const { delta, toTop } = calculateScrollDelta(target.y, scroll.y, scroll.height, next === 0)
+    if (toTop) scroll.scrollTo(0)
+    else if (delta !== 0) scroll.scrollBy(delta)
   }
 
   function select() {
@@ -600,9 +598,9 @@ export function Autocomplete(props: {
 
   const height = createMemo(() => {
     const count = options().length || 1
-    if (!store.visible) return Math.min(10, count)
+    if (!store.visible) return Math.min(15, count)
     positionTick()
-    return Math.min(10, count, Math.max(1, props.anchor().y))
+    return Math.min(15, count, Math.max(1, props.anchor().y))
   })
 
   let scroll: ScrollBoxRenderable
