@@ -15,6 +15,7 @@ import { Config } from "@/config/config"
 import { SessionCompaction } from "./compaction"
 import { PermissionNext } from "@/permission/next"
 import { Question } from "@/question"
+import { ProviderWebsocket } from "@/provider/websocket"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -247,6 +248,12 @@ export namespace SessionProcessor {
                     usage: value.usage,
                     metadata: value.providerMetadata,
                   })
+                  ProviderWebsocket.commit({
+                    sessionID: input.sessionID,
+                    providerID: input.model.providerID,
+                    modelID: input.model.api.id,
+                    responseID: value.response.id,
+                  })
                   input.assistantMessage.finish = value.finishReason
                   input.assistantMessage.cost += usage.cost
                   input.assistantMessage.tokens = usage.tokens
@@ -354,6 +361,11 @@ export namespace SessionProcessor {
             log.error("process", {
               error: e,
               stack: JSON.stringify(e.stack),
+            })
+            ProviderWebsocket.fail({
+              sessionID: input.sessionID,
+              providerID: input.model.providerID,
+              modelID: input.model.api.id,
             })
             const error = MessageV2.fromError(e, { providerID: input.model.providerID })
             if (MessageV2.ContextOverflowError.isInstance(error)) {

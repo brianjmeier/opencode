@@ -957,6 +957,7 @@ export namespace Config {
           baseURL: z.string().optional(),
           enterpriseUrl: z.string().optional().describe("GitHub Enterprise URL for copilot authentication"),
           setCacheKey: z.boolean().optional().describe("Enable promptCacheKey for this provider (default false)"),
+          websocket: z.boolean().optional().describe("Enable Responses API WebSocket mode for this provider"),
           timeout: z
             .union([
               z

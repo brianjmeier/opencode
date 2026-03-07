@@ -22,6 +22,7 @@ import { SystemPrompt } from "./system"
 import { Flag } from "@/flag/flag"
 import { PermissionNext } from "@/permission/next"
 import { Auth } from "@/auth"
+import { ProviderWebsocket } from "@/provider/websocket"
 
 export namespace LLM {
   const log = Log.create({ service: "llm" })
@@ -63,6 +64,7 @@ export namespace LLM {
       Auth.get(input.model.providerID),
     ])
     const isCodex = provider.id === "openai" && auth?.type === "oauth"
+    const websocket = provider.options?.["websocket"] === true && Provider.usesResponses(input.model, provider.options)
 
     const system = []
     system.push(
@@ -218,6 +220,7 @@ export namespace LLM {
                 "User-Agent": `opencode/${Installation.VERSION}`,
               }
             : undefined),
+        ...(websocket ? ProviderWebsocket.header(input.sessionID) : undefined),
         ...input.model.headers,
         ...headers,
       },
@@ -239,6 +242,19 @@ export namespace LLM {
               if (args.type === "stream") {
                 // @ts-expect-error
                 args.params.prompt = ProviderTransform.message(args.params.prompt, input.model, options)
+
+                if (websocket) {
+                  const next = ProviderWebsocket.prepare({
+                    sessionID: input.sessionID,
+                    providerID: input.model.providerID,
+                    modelID: input.model.api.id,
+                    prompt: args.params.prompt,
+                    providerOptions: args.params.providerOptions ?? {},
+                  })
+                  // @ts-expect-error
+                  args.params.prompt = next.prompt
+                  args.params.providerOptions = next.providerOptions as typeof args.params.providerOptions
+                }
               }
               return args.params
             },

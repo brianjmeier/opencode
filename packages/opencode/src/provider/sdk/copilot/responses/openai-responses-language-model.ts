@@ -149,6 +149,10 @@ export class OpenAIResponsesLanguageModel implements LanguageModelV2 {
     return this.config.provider
   }
 
+  private get providerOptionsName() {
+    return this.config.provider.split(".")[0].trim()
+  }
+
   private async getArgs({
     maxOutputTokens,
     temperature,
@@ -193,11 +197,18 @@ export class OpenAIResponsesLanguageModel implements LanguageModelV2 {
       warnings.push({ type: "unsupported-setting", setting: "stopSequences" })
     }
 
-    const openaiOptions = await parseProviderOptions({
-      provider: "copilot",
-      providerOptions,
-      schema: openaiResponsesProviderOptionsSchema,
-    })
+    const openaiOptions = Object.assign(
+      (await parseProviderOptions({
+        provider: "copilot",
+        providerOptions,
+        schema: openaiResponsesProviderOptionsSchema,
+      })) ?? {},
+      (await parseProviderOptions({
+        provider: this.providerOptionsName,
+        providerOptions,
+        schema: openaiResponsesProviderOptionsSchema,
+      })) ?? {},
+    )
 
     const { input, warnings: inputWarnings } = await convertToOpenAIResponsesInput({
       prompt,

@@ -45,6 +45,7 @@ import { fromNodeProviderChain } from "@aws-sdk/credential-providers"
 import { GoogleAuth } from "google-auth-library"
 import { ProviderTransform } from "./transform"
 import { Installation } from "../installation"
+import { ProviderWebsocket } from "./websocket"
 
 export namespace Provider {
   const log = Log.create({ service: "provider" })
@@ -59,6 +60,23 @@ export namespace Provider {
 
   function shouldUseCopilotResponsesApi(modelID: string): boolean {
     return isGpt5OrLater(modelID) && !modelID.startsWith("gpt-5-mini")
+  }
+
+  export function usesResponses(model: Model, options?: Record<string, unknown>) {
+    if (model.api.npm === "@ai-sdk/openai") {
+      return model.providerID !== "azure" && model.providerID !== "azure-cognitive-services"
+    }
+    if (model.providerID === "openai") return true
+    if (["azure", "azure-cognitive-services"].includes(model.providerID)) {
+      return options?.["useCompletionUrls"] !== true
+    }
+    if (model.api.npm === "@ai-sdk/github-copilot") {
+      return shouldUseCopilotResponsesApi(model.api.id)
+    }
+    if (model.api.npm === "@ai-sdk/openai-compatible") {
+      return options?.["websocket"] === true
+    }
+    return false
   }
 
   function googleVertexVars(options: Record<string, any>) {
@@ -116,6 +134,9 @@ export namespace Provider {
     getModel?: CustomModelLoader
     options?: Record<string, any>
   }>
+  type ResponsesSDK = SDK & {
+    responses?: (modelID: string) => LanguageModelV2
+  }
 
   const CUSTOM_LOADERS: Record<string, CustomLoader> = {
     async anthropic() {
@@ -1091,6 +1112,7 @@ export namespace Provider {
       if (existing) return existing
 
       const customFetch = options["fetch"]
+      const websocket = options["websocket"] === true && usesResponses(model, options)
 
       options["fetch"] = async (input: any, init?: BunFetchRequestInit) => {
         // Preserve custom fetch if it exists, wrap it with timeout logic
@@ -1125,14 +1147,28 @@ export namespace Provider {
           }
         }
 
-        return fetchFn(input, {
+        const next = {
           ...opts,
           // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
           timeout: false,
-        })
+        }
+
+        if (websocket) {
+          return ProviderWebsocket.fetch({
+            providerID: model.providerID,
+            url: input,
+            init: next,
+            next: fetchFn,
+          })
+        }
+
+        return fetchFn(input, next)
       }
 
-      const bundledFn = BUNDLED_PROVIDERS[model.api.npm]
+      const bundledFn =
+        websocket && model.api.npm === "@ai-sdk/openai-compatible"
+          ? (createGitHubCopilotOpenAICompatible as unknown as (options: any) => SDK)
+          : BUNDLED_PROVIDERS[model.api.npm]
       if (bundledFn) {
         log.info("using bundled provider", { providerID: model.providerID, pkg: model.api.npm })
         const loaded = bundledFn({
@@ -1195,12 +1231,14 @@ export namespace Provider {
     if (s.models.has(key)) return s.models.get(key)!
 
     const provider = s.providers[model.providerID]
-    const sdk = await getSDK(model)
+    const sdk = (await getSDK(model)) as ResponsesSDK
 
     try {
       const language = s.modelLoaders[model.providerID]
         ? await s.modelLoaders[model.providerID](sdk, model.api.id, provider.options)
-        : sdk.languageModel(model.api.id)
+        : usesResponses(model, provider.options) && typeof sdk.responses === "function"
+          ? sdk.responses(model.api.id)
+          : sdk.languageModel(model.api.id)
       s.models.set(key, language)
       return language
     } catch (e) {
