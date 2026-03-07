@@ -101,11 +101,27 @@ export namespace ProviderWebsocket {
     }
   }
 
+  function hash(prompt: unknown[], size = prompt.length) {
+    return Hash.fast(JSON.stringify(prompt.slice(0, size)))
+  }
+
   function head(prompt: unknown[]) {
     return {
-      hash: Hash.fast(JSON.stringify(prompt)),
+      hash: hash(prompt),
       size: prompt.length,
     }
+  }
+
+  function terminalEvent(msg: Record<string, unknown>) {
+    return msg.type === "response.completed" || msg.type === "response.incomplete" || msg.type === "response.done"
+  }
+
+  function terminal(raw: string, msg: Record<string, unknown>) {
+    if (msg.type !== "response.done") return raw
+    return JSON.stringify({
+      ...msg,
+      type: "response.completed",
+    })
   }
 
   function socketURL(input: URL) {
@@ -246,7 +262,7 @@ export namespace ProviderWebsocket {
         }
         return
       }
-      if (msg.type === "response.completed" || msg.type === "response.incomplete") {
+      if (terminalEvent(msg)) {
         if (closed) return
         closed = true
         stop()
@@ -366,10 +382,12 @@ export namespace ProviderWebsocket {
         const onClose = () => onError()
         const onMessage = (event: MessageEvent<string | ArrayBuffer | Uint8Array>) => {
           const raw = text(event.data)
-          controller.enqueue(enc.encode(`data: ${raw}\n\n`))
           const msg = json(raw)
+          const chunk = msg ? terminal(raw, msg) : raw
+          controller.enqueue(enc.encode(`data: ${chunk}\n\n`))
           if (!msg) return
-          if (msg.type === "response.completed" || msg.type === "response.incomplete") {
+          if (terminalEvent(msg)) {
+            controller.enqueue(enc.encode("data: [DONE]\n\n"))
             finish()
             return
           }
@@ -415,7 +433,7 @@ export namespace ProviderWebsocket {
       }
     }
 
-    const prev = item.prompt ? Hash.fast(JSON.stringify(input.prompt.slice(0, item.prompt.size))) : undefined
+    const prev = item.prompt ? hash(input.prompt, item.prompt.size) : undefined
     if (item.prompt && (prev !== item.prompt.hash || item.next.size < item.prompt.size)) {
       clear(item)
       return {

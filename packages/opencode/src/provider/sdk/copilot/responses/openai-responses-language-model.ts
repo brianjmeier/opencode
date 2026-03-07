@@ -197,6 +197,10 @@ export class OpenAIResponsesLanguageModel implements LanguageModelV2 {
       warnings.push({ type: "unsupported-setting", setting: "stopSequences" })
     }
 
+    // When this responses model is reused for openai-compatible providers,
+    // providerOptions may be keyed by the provider name instead of "copilot".
+    // Parse both so websocket-mode callers can pass responses options under
+    // either namespace without losing things like previousResponseId.
     const openaiOptions = Object.assign(
       (await parseProviderOptions({
         provider: "copilot",

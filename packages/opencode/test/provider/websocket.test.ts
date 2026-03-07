@@ -96,7 +96,7 @@ beforeAll(() => {
           },
         })
         send(ws, {
-          type: "response.completed",
+          type: "response.done",
           response: {
             incomplete_details: null,
             usage: {
